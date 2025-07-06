@@ -1,4 +1,4 @@
-# firefly-vuct
+# firefly-vcut
 
 Transcribe vtuber live recordings & Tools I use to manage the data pipeline for firefly : )
 
