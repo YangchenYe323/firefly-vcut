@@ -1,0 +1,24 @@
+[project]
+name = "firefly-vcut"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.2.1",
+    "logging>=0.4.9.6",
+    "openai-whisper>=20250625",
+    "psycopg2-binary>=2.9.10",
+    "python-dotenv>=1.1.1",
+    "rapidfuzz>=3.13.0",
+    "requests>=2.32.4",
+    "tqdm>=4.67.1",
+    "whisper>=1.1.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.7.19,<0.8.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+vcut = "firefly_vcut.cmdline:vcut"

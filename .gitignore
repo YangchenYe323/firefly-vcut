@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Bilibili Cookies
+cookies.json
+
+# Environment variables
+.env
+
+# Data root directory
+data/
+
+# Downloaded audio files
+*.m4a
+
+# Temporary directories for BBDown, which are directories with all numeric names
+[0-9]*/
