@@ -16,7 +16,7 @@
 # );
 #
 # ALTER TABLE "Song" ADD COLUMN     "lyrics_fragment" TEXT;
-# 
+#
 # -- CreateTable
 # CREATE TABLE "LiveRecordingArchive" (
 #     "id" SERIAL NOT NULL,
@@ -52,68 +52,115 @@
 # ALTER TABLE "SongOccurrenceInLive" ADD CONSTRAINT "SongOccurrenceInLive_liveRecordingArchiveId_fkey" FOREIGN KEY ("liveRecordingArchiveId") REFERENCES "LiveRecordingArchive"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 import psycopg2
-from psycopg2 import pool
 from contextlib import contextmanager
 from psycopg2.extras import execute_values
 from .types import Archive, Song, SongOccurrence
 
+
 @contextmanager
-def get_db_pool(db_url: str, minconn: int = 1, maxconn: int = 10):
-    p = pool.SimpleConnectionPool(minconn, maxconn, db_url)
+def get_db_connection(db_url: str):
+    conn = psycopg2.connect(db_url)
     try:
-        yield p
+        yield conn
     finally:
-        p.closeall()
+        conn.close()
+
 
 def get_all_archives_from_db(conn: psycopg2.extensions.connection) -> list[Archive]:
     archives = []
     with conn.cursor() as cursor:
-        cursor.execute('SELECT id, bvid, title, pubdate, duration, cover FROM "LiveRecordingArchive";')
-        for (id, bvid, title, pubdate, duration, cover) in cursor:
-            archives.append(Archive(id=id, bvid=bvid, title=title, pubdate=pubdate, duration=duration, cover=cover))
+        cursor.execute(
+            'SELECT id, bvid, title, pubdate, duration, cover FROM "LiveRecordingArchive";'
+        )
+        for id, bvid, title, pubdate, duration, cover in cursor:
+            archives.append(
+                Archive(
+                    id=id,
+                    bvid=bvid,
+                    title=title,
+                    pubdate=pubdate,
+                    duration=duration,
+                    cover=cover,
+                )
+            )
     return archives
 
-def get_archives_by_bvid(conn: psycopg2.extensions.connection, bvid: str) -> list[Archive]:
+
+def get_archives_by_bvid(
+    conn: psycopg2.extensions.connection, bvid: str
+) -> list[Archive]:
     archives = []
     with conn.cursor() as cursor:
-        cursor.execute('SELECT id, bvid, title, pubdate, duration, cover FROM "LiveRecordingArchive" WHERE bvid = %s', (bvid,))
-        for (id, bvid, title, pubdate, duration, cover) in cursor:
-            archives.append(Archive(id=id, bvid=bvid, title=title, pubdate=pubdate, duration=duration, cover=cover))
+        cursor.execute(
+            'SELECT id, bvid, title, pubdate, duration, cover FROM "LiveRecordingArchive" WHERE bvid = %s',
+            (bvid,),
+        )
+        for id, bvid, title, pubdate, duration, cover in cursor:
+            archives.append(
+                Archive(
+                    id=id,
+                    bvid=bvid,
+                    title=title,
+                    pubdate=pubdate,
+                    duration=duration,
+                    cover=cover,
+                )
+            )
     return archives
 
 
 def get_all_songs_from_db(conn: psycopg2.extensions.connection) -> list[Song]:
     songs = []
     with conn.cursor() as cursor:
-        cursor.execute('SELECT id, title, lyrics_fragment FROM "Song" WHERE lyrics_fragment IS NOT NULL AND lyrics_fragment != \'\'')
-        for (id, title, lyrics_fragment) in cursor:
+        cursor.execute(
+            "SELECT id, title, lyrics_fragment FROM \"Song\" WHERE lyrics_fragment IS NOT NULL AND lyrics_fragment != ''"
+        )
+        for id, title, lyrics_fragment in cursor:
             songs.append(Song(id=id, title=title, lyrics_fragment=lyrics_fragment))
     return songs
+
 
 def get_song_by_title(conn: psycopg2.extensions.connection, title: str) -> list[Song]:
     songs = []
     with conn.cursor() as cursor:
-        cursor.execute('SELECT id, title, lyrics_fragment FROM "Song" WHERE title = %s', (title,))
-        for (id, title, lyrics_fragment) in cursor:
+        cursor.execute(
+            'SELECT id, title, lyrics_fragment FROM "Song" WHERE title = %s', (title,)
+        )
+        for id, title, lyrics_fragment in cursor:
             songs.append(Song(id=id, title=title, lyrics_fragment=lyrics_fragment))
     return songs
 
-def get_all_occurrences_from_db(conn: psycopg2.extensions.connection) -> list[SongOccurrence]:
+
+def get_all_occurrences_from_db(
+    conn: psycopg2.extensions.connection,
+) -> list[SongOccurrence]:
     """
     Retrieve all song occurrences from the database.
-    
-    Note: Double quotes around column names are required because PostgreSQL treats unquoted 
-    identifiers as lowercase by default. Since our table uses camelCase column names 
+
+    Note: Double quotes around column names are required because PostgreSQL treats unquoted
+    identifiers as lowercase by default. Since our table uses camelCase column names
     ("songId", "liveRecordingArchiveId"), we must quote them to preserve the exact case.
     """
     occurrences = []
     with conn.cursor() as cursor:
-        cursor.execute('SELECT s."songId", s."liveRecordingArchiveId", s."start", s."page" FROM "SongOccurrenceInLive" as s;')
-        for (songId, liveRecordingArchiveId, start, page) in cursor:
-            occurrences.append(SongOccurrence(song_id=songId, archive_id=liveRecordingArchiveId, start=start, page=page))
+        cursor.execute(
+            'SELECT s."songId", s."liveRecordingArchiveId", s."start", s."page" FROM "SongOccurrenceInLive" as s;'
+        )
+        for songId, liveRecordingArchiveId, start, page in cursor:
+            occurrences.append(
+                SongOccurrence(
+                    song_id=songId,
+                    archive_id=liveRecordingArchiveId,
+                    start=start,
+                    page=page,
+                )
+            )
     return occurrences
 
-def insert_archives_to_db(conn: psycopg2.extensions.connection, archives: list[Archive]):
+
+def insert_archives_to_db(
+    conn: psycopg2.extensions.connection, archives: list[Archive]
+):
     with conn.cursor() as cursor:
         execute_values(
             cursor,
@@ -122,29 +169,48 @@ def insert_archives_to_db(conn: psycopg2.extensions.connection, archives: list[A
             ON CONFLICT (bvid) DO NOTHING;
             """,
             [
-                (archive.bvid, archive.title, archive.pubdate, archive.duration, archive.cover)
+                (
+                    archive.bvid,
+                    archive.title,
+                    archive.pubdate,
+                    archive.duration,
+                    archive.cover,
+                )
                 for archive in archives
-            ]
+            ],
         )
         conn.commit()
 
-def insert_song_occurrences_to_db(conn: psycopg2.extensions.connection, occurrences: list[SongOccurrence]):
+
+def insert_song_occurrences_to_db(
+    conn: psycopg2.extensions.connection, occurrences: list[SongOccurrence]
+):
     """
     Insert song occurrences into the database with upsert functionality.
-    
-    Note: Double quotes around column names are required because PostgreSQL treats unquoted 
-    identifiers as lowercase by default. Since our table uses camelCase column names 
+
+    Note: Double quotes around column names are required because PostgreSQL treats unquoted
+    identifiers as lowercase by default. Since our table uses camelCase column names
     ("songId", "liveRecordingArchiveId"), we must quote them to preserve the exact case.
     """
     with conn.cursor() as cursor:
-        execute_values(
-            cursor,
-            """
+        # Split the occurrences into chunks of 50 to avoid db error
+        for chunk in [occurrences[i : i + 50] for i in range(0, len(occurrences), 50)]:
+            execute_values(
+                cursor,
+                """
             INSERT INTO "SongOccurrenceInLive" ("songId", "liveRecordingArchiveId", "start", "page") VALUES %s
             ON CONFLICT ("songId", "liveRecordingArchiveId") DO UPDATE SET
                 "start" = EXCLUDED."start",
                 "page" = EXCLUDED."page";
             """,
-            [(occurrence.song_id, occurrence.archive_id, occurrence.start, occurrence.page) for occurrence in occurrences]
-        )
-        conn.commit()
+                [
+                    (
+                        occurrence.song_id,
+                        occurrence.archive_id,
+                        occurrence.start,
+                        occurrence.page,
+                    )
+                    for occurrence in chunk
+                ],
+            )
+            conn.commit()

@@ -9,7 +9,7 @@ import click
 import sys
 
 from .fuzz import search_text_in_transcript
-from .db import get_all_archives_from_db, get_all_occurrences_from_db, get_all_songs_from_db, get_archives_by_bvid, get_db_pool, get_song_by_title, insert_archives_to_db, insert_song_occurrences_to_db
+from .db import get_all_archives_from_db, get_all_occurrences_from_db, get_all_songs_from_db, get_archives_by_bvid, get_db_connection, get_song_by_title, insert_archives_to_db, insert_song_occurrences_to_db
 from .bilibili import get_live_recording_series, get_archives_from_series
 from .types import Archive, SongOccurrence
 from .transcribe import download_and_transcribe
@@ -54,7 +54,7 @@ def vcut(ctx: click.Context, root: str, verbose: int):
     help="URL of the database to sync with, if not provided, will try to read from environment variable DATABASE_URL sourced from .env file",
 )
 @click.pass_context
-def sync_archive(ctx: click.Context, mid: int, db_url: str | None):
+def sync_archives(ctx: click.Context, mid: int, db_url: str | None):
     """
     Syncs locally stored live recording archives with the database.
 
@@ -83,19 +83,15 @@ def sync_archive(ctx: click.Context, mid: int, db_url: str | None):
         )
         sys.exit(1)
 
-    with get_db_pool(db_url) as p:
-        try:
-            conn = p.getconn()
-            archives = get_all_archives_from_db(conn)
-        finally:
-            p.putconn(conn)
+    archives_local = get_all_archives_local(root, mid)
+    click.echo(f"从本地存储中获取到 {len(archives_local)} 个直播回放档案")
+
+    with get_db_connection(db_url) as conn:
+        archives = get_all_archives_from_db(conn)
 
         click.echo(f"从数据库中获取到 {len(archives)} 个直播回放档案")
 
         archive_bvid_set = set([archive.bvid for archive in archives])
-
-        archives_local = get_all_archives_local(root, mid)
-        click.echo(f"从本地存储中获取到 {len(archives_local)} 个直播回放档案")
 
         archives_to_insert = [
             archive
@@ -132,8 +128,8 @@ def sync_archive(ctx: click.Context, mid: int, db_url: str | None):
 @click.option(
     "--threshold",
     type=int,
-    default=48,
-    help="Threshold for the similarity score, the higher the threshold, the more similar the text must be to be considered a match. 48 is a good threshold for my own testing",
+    default=40,
+    help="Threshold for the similarity score, the higher the threshold, the more similar the text must be to be considered a match. 40 is a good threshold for my own testing",
 )
 @click.option(
     "-n",
@@ -186,39 +182,37 @@ def sync_occurrences(
         )
         sys.exit(1)
 
-    with get_db_pool(db_url) as p:
-        force_update = song is not None or bvid is not None
+    force_update = song is not None or bvid is not None
 
-        songs = None
-        archives = None
+    songs = None
+    archives = None
+    # A hash set of (song_id, archive_id)  where the occurrence exists in the database
+    occurrence_set = set()
 
-        # A hash set of (song_id, archive_id)  where the occurrence exists in the database
-        occurrence_set = set()
+    with get_db_connection(db_url) as conn:
+        if song is not None:
+            songs = get_song_by_title(conn, song)
+        else:
+            songs = get_all_songs_from_db(conn)
 
-        try:
-            conn = p.getconn()
-            if song is not None:
-                songs = get_song_by_title(conn, song)
-            else:
-                songs = get_all_songs_from_db(conn)
-            if bvid is not None:
-                archives = get_archives_by_bvid(conn, bvid)  # noqa: F821
-            else:
-                archives = get_all_archives_from_db(conn)
-            if not force_update:
-                occurrences = get_all_occurrences_from_db(conn)
-                occurrence_set = set([(occurrence.song_id, occurrence.archive_id) for occurrence in occurrences])
-        finally:
-            p.putconn(conn)
+        if bvid is not None:
+            archives = get_archives_by_bvid(conn, bvid)  # noqa: F821
+        else:
+            archives = get_all_archives_from_db(conn)
+
+        if not force_update:
+            occurrences = get_all_occurrences_from_db(conn)
+            occurrence_set = set([(occurrence.song_id, occurrence.archive_id) for occurrence in occurrences])
         
-        if not songs:
-            click.echo("没有找到歌曲", err=True)
-            sys.exit(1)
+    if not songs:
+        click.echo("没有找到歌曲", err=True)
+        sys.exit(1)
 
-        if not archives:
-            click.echo("没有找到直播回放", err=True)
-            sys.exit(1)
-        
+    if not archives:
+        click.echo("没有找到直播回放", err=True)
+        sys.exit(1)
+    
+    with get_db_connection(db_url) as conn:
         new_occurrences = []
         for song in songs:
             for archive in archives:
@@ -231,7 +225,7 @@ def sync_occurrences(
                 # This might be expected, if the archive is not transcribed or the transcript
                 # is deleted. The next transcriber run will fix this.
                 if transcript is None:
-                    logger.error(f"没有找到 {archive.bvid} 的转写结果, 跳过")
+                    logger.debug(f"没有找到 {archive.bvid} 的转写结果, 跳过")
                     continue
 
                 # This is not fine. If a transcript is found, it should have at least one page.
@@ -250,19 +244,26 @@ def sync_occurrences(
                     logger.debug(f"相似度 {score} 低于阈值 {threshold}, 跳过")
                     continue
 
-                if dry_run:
-                    click.echo(f"{song.title} 在 {archive.bvid} 的记录: P{page}, {normalize_seconds(start)}, similarity: {score}")
-                    click.echo(f"{text}")
-                    continue
+                click.echo(f"{song.title} 在 {archive.bvid} 的记录: P{page}, {normalize_seconds(start)}, similarity: {score}")
+                click.echo(f"{text}")
                 
                 new_occurrences.append(SongOccurrence(song_id=song.id, archive_id=archive.id, start=start, page=page))
+
+                if len(new_occurrences) > 100 and not dry_run:
+                    click.echo(f"需要插入 {len(new_occurrences)} 个歌曲出现记录")
+                    with get_db_connection(db_url) as conn:
+                        insert_song_occurrences_to_db(conn, new_occurrences)
+                    click.echo(f"插入 {len(new_occurrences)} 个歌曲出现记录完成")
+                    new_occurrences = []
         
         if dry_run:
             return
         
         click.echo(f"需要插入 {len(new_occurrences)} 个歌曲出现记录")
-        
-        insert_song_occurrences_to_db(conn, new_occurrences)
+
+        with get_db_connection(db_url) as conn:
+            insert_song_occurrences_to_db(conn, new_occurrences)
+
         click.echo("插入完成")
 
 @vcut.command()
