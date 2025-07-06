@@ -8,8 +8,7 @@ import tqdm
 import click
 import sys
 
-from firefly_vcut.fuzz import search_text_in_transcript
-
+from .fuzz import search_text_in_transcript
 from .db import get_all_archives_from_db, get_all_occurrences_from_db, get_all_songs_from_db, get_archives_by_bvid, get_db_pool, get_song_by_title, insert_archives_to_db, insert_song_occurrences_to_db
 from .bilibili import get_live_recording_series, get_archives_from_series
 from .types import Archive, SongOccurrence
