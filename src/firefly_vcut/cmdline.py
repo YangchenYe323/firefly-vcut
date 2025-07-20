@@ -9,7 +9,17 @@ import click
 import sys
 
 from .fuzz import search_text_in_transcript
-from .db import get_all_archives_from_db, get_all_occurrences_from_db, get_all_songs_from_db, get_archives_by_bvid, get_db_connection, get_song_by_title, insert_archives_to_db, insert_song_occurrences_to_db
+from .db import (
+    get_all_archives_from_db,
+    get_all_occurrences_from_db,
+    get_all_vtuber_songs_from_db,
+    get_archives_by_bvid,
+    get_db_connection,
+    get_latest_archives_from_db,
+    get_vtuber_song_by_title,
+    insert_archives_to_db,
+    insert_song_occurrences_to_db,
+)
 from .bilibili import get_live_recording_series, get_archives_from_series
 from .types import Archive, SongOccurrence
 from .transcribe import download_and_transcribe
@@ -87,7 +97,7 @@ def sync_archives(ctx: click.Context, mid: int, db_url: str | None):
     click.echo(f"从本地存储中获取到 {len(archives_local)} 个直播回放档案")
 
     with get_db_connection(db_url) as conn:
-        archives = get_all_archives_from_db(conn)
+        archives = get_all_archives_from_db(conn, mid)
 
         click.echo(f"从数据库中获取到 {len(archives)} 个直播回放档案")
 
@@ -104,12 +114,18 @@ def sync_archives(ctx: click.Context, mid: int, db_url: str | None):
             click.echo("没有需要插入的直播回放档案")
             return
 
-        insert_archives_to_db(conn, archives_to_insert)
+        insert_archives_to_db(conn, archives_to_insert, mid)
 
         click.echo("同步完成")
 
 
 @vcut.command()
+@click.option(
+    "--mid",
+    type=int,
+    help="Mid of the user to sync song occurrence from",
+    required=True,
+)
 @click.option(
     "--db-url",
     type=str,
@@ -137,14 +153,21 @@ def sync_archives(ctx: click.Context, mid: int, db_url: str | None):
     is_flag=True,
     help="If set, it will not insert the song occurrence relation into the database, but only print the relation to be inserted.",
 )
+@click.option(
+    "--latest",
+    type=int,
+    help="If set, it will only search the latest number of archives from the database.",
+)
 @click.pass_context
 def sync_occurrences(
     ctx: click.Context,
+    mid: int,
     db_url: str | None,
     song: str | None,
     bvid: str | None,
     threshold: int,
     dry_run: bool,
+    latest: int | None,
 ):
     """
     Syncs song occurrence in live recordings with the database.
@@ -184,70 +207,87 @@ def sync_occurrences(
 
     force_update = song is not None or bvid is not None
 
-    songs = None
+    vtuber_songs = None
     archives = None
     # A hash set of (song_id, archive_id)  where the occurrence exists in the database
     occurrence_set = set()
 
     with get_db_connection(db_url) as conn:
         if song is not None:
-            songs = get_song_by_title(conn, song)
+            vtuber_songs = get_vtuber_song_by_title(conn, song, mid)
         else:
-            songs = get_all_songs_from_db(conn)
+            vtuber_songs = get_all_vtuber_songs_from_db(conn, mid)
 
         if bvid is not None:
             archives = get_archives_by_bvid(conn, bvid)  # noqa: F821
+
+        elif latest is not None:
+            archives = get_latest_archives_from_db(conn, mid, latest)
         else:
-            archives = get_all_archives_from_db(conn)
+            archives = get_all_archives_from_db(conn, mid)
 
         if not force_update:
-            occurrences = get_all_occurrences_from_db(conn)
-            occurrence_set = set([(occurrence.song_id, occurrence.archive_id) for occurrence in occurrences])
-        
-    if not songs:
+            occurrences = get_all_occurrences_from_db(conn, mid)
+            occurrence_set = set(
+                [
+                    (occurrence.vtuber_song_id, occurrence.archive_id)
+                    for occurrence in occurrences
+                ]
+            )
+
+    if not vtuber_songs:
         click.echo("没有找到歌曲", err=True)
         sys.exit(1)
 
     if not archives:
         click.echo("没有找到直播回放", err=True)
         sys.exit(1)
-    
+
     with get_db_connection(db_url) as conn:
         new_occurrences = []
-        for song in songs:
-            for archive in archives:
-                if (song.id, archive.id) in occurrence_set:
+        for archive in archives:
+            transcript = find_transcript_from_bvid(root, archive.bvid)
+            if transcript is None:
+                logger.debug(f"没有找到 {archive.bvid} 的转写结果, 跳过")
+                continue
+
+            if len(transcript) == 0:
+                raise ValueError(f"没有找到 {archive.bvid} 的转写结果")
+
+            for song in vtuber_songs:
+                if (song.vtuber_song_id, archive.id) in occurrence_set:
                     logger.debug(f"已存在 {song.title} 在 {archive.bvid} 的记录, 跳过")
                     continue
-                # Look for the transcript for this given archive
-                transcript = find_transcript_from_bvid(root, archive.bvid)
-
-                # This might be expected, if the archive is not transcribed or the transcript
-                # is deleted. The next transcriber run will fix this.
-                if transcript is None:
-                    logger.debug(f"没有找到 {archive.bvid} 的转写结果, 跳过")
-                    continue
-
-                # This is not fine. If a transcript is found, it should have at least one page.
-                # If this happnens, we abort and the user can remove the transcript directory and
-                # let the next transcriber run fix this.
-                if len(transcript) == 0:
-                    raise ValueError(f"没有找到 {archive.bvid} 的转写结果")
 
                 result = search_text_in_transcript(transcript, song.lyrics_fragment)
                 if result is None:
-                    logger.debug(f"没有找到 {song.title} 在 {archive.bvid} 的记录, 跳过")
+                    logger.debug(
+                        f"没有找到 {song.title} 在 {archive.bvid} 的记录, 跳过"
+                    )
                     continue
                 start, page, score, text = result
 
                 if score < threshold:
-                    logger.debug(f"相似度 {score} 低于阈值 {threshold}, 跳过")
+                    logger.debug(
+                        f"歌曲 {song.title} 在 {archive.bvid} 的相似度 {score} 低于阈值 {threshold}, 跳过"
+                    )
+                    logger.debug(f"片段: {text}")
                     continue
 
-                click.echo(f"{song.title} 在 {archive.bvid} 的记录: P{page}, {normalize_seconds(start)}, similarity: {score}")
+                click.echo(
+                    f"{song.title} 在 {archive.bvid} 的记录: P{page}, {normalize_seconds(start)}, similarity: {score}"
+                )
                 click.echo(f"{text}")
-                
-                new_occurrences.append(SongOccurrence(song_id=song.id, archive_id=archive.id, start=start, page=page))
+
+                new_occurrences.append(
+                    SongOccurrence(
+                        song_id=song.song_id,
+                        vtuber_song_id=song.vtuber_song_id,
+                        archive_id=archive.id,
+                        start=start,
+                        page=page,
+                    )
+                )
 
                 if len(new_occurrences) > 100 and not dry_run:
                     click.echo(f"需要插入 {len(new_occurrences)} 个歌曲出现记录")
@@ -255,16 +295,17 @@ def sync_occurrences(
                         insert_song_occurrences_to_db(conn, new_occurrences)
                     click.echo(f"插入 {len(new_occurrences)} 个歌曲出现记录完成")
                     new_occurrences = []
-        
+
         if dry_run:
             return
-        
+
         click.echo(f"需要插入 {len(new_occurrences)} 个歌曲出现记录")
 
         with get_db_connection(db_url) as conn:
             insert_song_occurrences_to_db(conn, new_occurrences)
 
         click.echo("插入完成")
+
 
 @vcut.command()
 @click.option(
@@ -434,23 +475,24 @@ def find_transcript_from_bvid(root: str, bvid: str) -> dict | None:
                             return json.load(f)
     return None
 
+
 def normalize_seconds(seconds):
     """
     Convert seconds to hh:mm:ss format.
-    
+
     Args:
         seconds (int or float): Number of seconds to convert
-        
+
     Returns:
         str: Time in hh:mm:ss format
     """
     # Convert to integer to handle potential float inputs
     seconds = int(seconds)
-    
+
     # Calculate hours, minutes, and remaining seconds
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     remaining_seconds = seconds % 60
-    
+
     # Format with leading zeros
     return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}"

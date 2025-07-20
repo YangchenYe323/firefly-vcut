@@ -1,60 +1,7 @@
-# Relevant SQL migration files:
-#
-# -- CreateTable
-# CREATE TABLE "Song" (
-#     "id" SERIAL NOT NULL,
-#     "title" TEXT NOT NULL,
-#     "artist" TEXT NOT NULL,
-#     "remark" TEXT NOT NULL,
-#     "extra" JSONB NOT NULL,
-#     "created_on" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-#     "lang" TEXT[],
-#     "tag" TEXT[],
-#     "url" TEXT,
-
-#     CONSTRAINT "Song_pkey" PRIMARY KEY ("id")
-# );
-#
-# ALTER TABLE "Song" ADD COLUMN     "lyrics_fragment" TEXT;
-#
-# -- CreateTable
-# CREATE TABLE "LiveRecordingArchive" (
-#     "id" SERIAL NOT NULL,
-#     "bvid" TEXT NOT NULL,
-#     "title" TEXT NOT NULL,
-#     "pubdate" INTEGER NOT NULL,
-#     "duration" INTEGER NOT NULL,
-#     "cover" TEXT NOT NULL,
-
-#     CONSTRAINT "LiveRecordingArchive_pkey" PRIMARY KEY ("id")
-# );
-
-# -- CreateTable
-# CREATE TABLE "SongOccurrenceInLive" (
-#     "songId" INTEGER NOT NULL,
-#     "liveRecordingArchiveId" INTEGER NOT NULL,
-#     "start" INTEGER NOT NULL,
-#     "page" INTEGER NOT NULL,
-
-#     CONSTRAINT "SongOccurrenceInLive_pkey" PRIMARY KEY ("songId","liveRecordingArchiveId")
-# );
-
-# -- CreateIndex
-# CREATE UNIQUE INDEX "LiveRecordingArchive_bvid_key" ON "LiveRecordingArchive"("bvid");
-
-# -- CreateIndex
-# CREATE INDEX "LiveRecordingArchive_bvid_pubdate_idx" ON "LiveRecordingArchive"("bvid", "pubdate" DESC);
-
-# -- AddForeignKey
-# ALTER TABLE "SongOccurrenceInLive" ADD CONSTRAINT "SongOccurrenceInLive_songId_fkey" FOREIGN KEY ("songId") REFERENCES "Song"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-# -- AddForeignKey
-# ALTER TABLE "SongOccurrenceInLive" ADD CONSTRAINT "SongOccurrenceInLive_liveRecordingArchiveId_fkey" FOREIGN KEY ("liveRecordingArchiveId") REFERENCES "LiveRecordingArchive"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
 import psycopg2
 from contextlib import contextmanager
 from psycopg2.extras import execute_values
-from .types import Archive, Song, SongOccurrence
+from .types import Archive, VtuberSong, SongOccurrence
 
 
 @contextmanager
@@ -66,11 +13,14 @@ def get_db_connection(db_url: str):
         conn.close()
 
 
-def get_all_archives_from_db(conn: psycopg2.extensions.connection) -> list[Archive]:
+def get_all_archives_from_db(conn: psycopg2.extensions.connection, mid: int) -> list[Archive]:
+    mid = str(mid)
+
     archives = []
     with conn.cursor() as cursor:
         cursor.execute(
-            'SELECT id, bvid, title, pubdate, duration, cover FROM "LiveRecordingArchive";'
+            'SELECT a.id, a.bvid, a.title, a.pubdate, a.duration, a.cover FROM "LiveRecordingArchive" a JOIN "VtuberProfile" v ON a."vtuberProfileId" = v."id" WHERE v."mid" = %s;',
+            (mid,)
         )
         for id, bvid, title, pubdate, duration, cover in cursor:
             archives.append(
@@ -85,6 +35,16 @@ def get_all_archives_from_db(conn: psycopg2.extensions.connection) -> list[Archi
             )
     return archives
 
+def get_latest_archives_from_db(conn: psycopg2.extensions.connection, mid: int, count: int) -> list[Archive]:
+    mid = str(mid)
+
+    archives = []
+    with conn.cursor() as cursor:
+        cursor.execute(
+            'SELECT a.id, a.bvid, a.title, a.pubdate, a.duration, a.cover FROM "LiveRecordingArchive" a JOIN "VtuberProfile" v ON a."vtuberProfileId" = v."id" WHERE v."mid" = %s ORDER BY id DESC LIMIT %s', (mid, count))
+        for id, bvid, title, pubdate, duration, cover in cursor:
+            archives.append(Archive(id=id, bvid=bvid, title=title, pubdate=pubdate, duration=duration, cover=cover))
+    return archives
 
 def get_archives_by_bvid(
     conn: psycopg2.extensions.connection, bvid: str
@@ -109,30 +69,42 @@ def get_archives_by_bvid(
     return archives
 
 
-def get_all_songs_from_db(conn: psycopg2.extensions.connection) -> list[Song]:
+def get_all_vtuber_songs_from_db(conn: psycopg2.extensions.connection, mid: int) -> list[VtuberSong]:
+    mid = str(mid)
+
+    stmt = """
+    SELECT s1."id", s2."id", s1."title", s1."lyricsFragment"
+    FROM "Song" s1 JOIN "VtuberSong" s2 ON s1."id" = s2."songId" JOIN "VtuberProfile" v ON s2."vtuberProfileId" = v."id"
+    WHERE v."mid" = %s AND s1."lyricsFragment" IS NOT NULL AND s1."lyricsFragment" != ''
+    """
+
     songs = []
     with conn.cursor() as cursor:
-        cursor.execute(
-            "SELECT id, title, lyrics_fragment FROM \"Song\" WHERE lyrics_fragment IS NOT NULL AND lyrics_fragment != ''"
-        )
-        for id, title, lyrics_fragment in cursor:
-            songs.append(Song(id=id, title=title, lyrics_fragment=lyrics_fragment))
+        cursor.execute(stmt, (mid,))
+        for song_id, vtuber_song_id, title, lyrics_fragment in cursor:
+            songs.append(VtuberSong(song_id=song_id, vtuber_song_id=vtuber_song_id, title=title, lyrics_fragment=lyrics_fragment))
     return songs
 
 
-def get_song_by_title(conn: psycopg2.extensions.connection, title: str) -> list[Song]:
+def get_vtuber_song_by_title(conn: psycopg2.extensions.connection, title: str, mid: int) -> list[VtuberSong]:
+    mid = str(mid)
+
+    stmt = """
+    SELECT s1."id", s2."id", s1."title", s1."lyricsFragment"
+    FROM "Song" s1 JOIN "VtuberSong" s2 ON s1."id" = s2."songId" JOIN "VtuberProfile" v ON s2."vtuberProfileId" = v."id"
+    WHERE v."mid" = %s AND s1."title" = %s AND s1."lyricsFragment" IS NOT NULL AND s1."lyricsFragment" != ''
+    """
     songs = []
     with conn.cursor() as cursor:
-        cursor.execute(
-            'SELECT id, title, lyrics_fragment FROM "Song" WHERE title = %s', (title,)
-        )
-        for id, title, lyrics_fragment in cursor:
-            songs.append(Song(id=id, title=title, lyrics_fragment=lyrics_fragment))
+        cursor.execute(stmt, (mid, title))
+        for song_id, vtuber_song_id, title, lyrics_fragment in cursor:
+            songs.append(VtuberSong(song_id=song_id, vtuber_song_id=vtuber_song_id, title=title, lyrics_fragment=lyrics_fragment))
     return songs
 
 
 def get_all_occurrences_from_db(
     conn: psycopg2.extensions.connection,
+    mid: int,
 ) -> list[SongOccurrence]:
     """
     Retrieve all song occurrences from the database.
@@ -141,16 +113,24 @@ def get_all_occurrences_from_db(
     identifiers as lowercase by default. Since our table uses camelCase column names
     ("songId", "liveRecordingArchiveId"), we must quote them to preserve the exact case.
     """
+
+    mid = str(mid)
+
+    stmt = """
+    SELECT s1."songId", s1."vtuberSongId", s1."liveRecordingArchiveId", s1."start", s1."page"
+    FROM "SongOccurrenceInLive" s1 JOIN "VtuberSong" s2 ON s1."vtuberSongId" = s2."id" JOIN "VtuberProfile" v ON s2."vtuberProfileId" = v."id"
+    WHERE v."mid" = %s
+    """
+
     occurrences = []
     with conn.cursor() as cursor:
-        cursor.execute(
-            'SELECT s."songId", s."liveRecordingArchiveId", s."start", s."page" FROM "SongOccurrenceInLive" as s;'
-        )
-        for songId, liveRecordingArchiveId, start, page in cursor:
+        cursor.execute(stmt, (mid,))
+        for song_id, vtuber_song_id, archive_id, start, page in cursor:
             occurrences.append(
                 SongOccurrence(
-                    song_id=songId,
-                    archive_id=liveRecordingArchiveId,
+                    song_id=song_id,
+                    vtuber_song_id=vtuber_song_id,
+                    archive_id=archive_id,
                     start=start,
                     page=page,
                 )
@@ -159,17 +139,28 @@ def get_all_occurrences_from_db(
 
 
 def insert_archives_to_db(
-    conn: psycopg2.extensions.connection, archives: list[Archive]
+    conn: psycopg2.extensions.connection,
+    archives: list[Archive],
+    mid: int,
 ):
+    mid = str(mid)
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            'SELECT "id" FROM "VtuberProfile" WHERE "mid" = %s', (mid,)
+        )
+        vtuber_profile_id = cursor.fetchone()[0]
+
     with conn.cursor() as cursor:
         execute_values(
             cursor,
             """
-            INSERT INTO "LiveRecordingArchive" (bvid, title, pubdate, duration, cover) VALUES %s
+            INSERT INTO "LiveRecordingArchive" ("vtuberProfileId", "bvid", "title", "pubdate", "duration", "cover") VALUES %s
             ON CONFLICT (bvid) DO NOTHING;
             """,
             [
                 (
+                    vtuber_profile_id,
                     archive.bvid,
                     archive.title,
                     archive.pubdate,
@@ -198,14 +189,15 @@ def insert_song_occurrences_to_db(
             execute_values(
                 cursor,
                 """
-            INSERT INTO "SongOccurrenceInLive" ("songId", "liveRecordingArchiveId", "start", "page") VALUES %s
-            ON CONFLICT ("songId", "liveRecordingArchiveId") DO UPDATE SET
+            INSERT INTO "SongOccurrenceInLive" ("songId", "vtuberSongId", "liveRecordingArchiveId", "start", "page") VALUES %s
+            ON CONFLICT ("vtuberSongId", "liveRecordingArchiveId") DO UPDATE SET
                 "start" = EXCLUDED."start",
                 "page" = EXCLUDED."page";
             """,
                 [
                     (
                         occurrence.song_id,
+                        occurrence.vtuber_song_id,
                         occurrence.archive_id,
                         occurrence.start,
                         occurrence.page,
