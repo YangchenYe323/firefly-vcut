@@ -3,6 +3,7 @@ import subprocess
 import os
 import json
 import whisper
+import time
 
 from .types import Archive
 
@@ -37,7 +38,7 @@ def download_audio(recording: Archive):
         )
         cmd.check_returncode()
 
-def download_and_transcribe(recording: Archive, transcription_file: str, model: whisper.Whisper):
+def download_and_transcribe(recording: Archive, transcription_file: str, model: whisper.Whisper) -> float:
     """
     Download the audio files of a recording and transcribe them. Write the segments to the given file
 
@@ -47,7 +48,7 @@ def download_and_transcribe(recording: Archive, transcription_file: str, model: 
         model: The model to use for transcription
 
     Returns:
-        None
+        GPU time spent processing the recording in seconds
     
     Side Effects:
         - Write the transcription of the recording to the given file, JSON format:
@@ -79,11 +80,16 @@ def download_and_transcribe(recording: Archive, transcription_file: str, model: 
 
     logger.info(f"Downloaded {len(audio_files)} audio files for {recording.bvid}")
 
+    total_gpu_time = 0
+
     segments = []
     for audio_file in audio_files:
         logger.info(f"Transcribing {audio_file}...")
 
+        start_time = time.time()
         result = model.transcribe(audio_file, language="zh", verbose=True)
+        end_time = time.time()
+        total_gpu_time += end_time - start_time
 
         # 我们只需要 start 和 text，省一点存储空间
         segments.append([
@@ -99,3 +105,5 @@ def download_and_transcribe(recording: Archive, transcription_file: str, model: 
     
     for audio_file in audio_files:
         os.remove(audio_file)
+    
+    return total_gpu_time

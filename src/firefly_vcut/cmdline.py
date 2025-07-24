@@ -369,6 +369,9 @@ def transcriber(ctx: click.Context, mid: int, model: str):
         click.echo(f"没有获取到 {mid} 的 直播回放 系列的回放视频", err=True)
         sys.exit(1)
 
+    total_gpu_time = 0
+    total_archive_duration = 0
+
     for archive in tqdm.tqdm(archives):
         pubdate = datetime.fromtimestamp(archive.pubdate, tz=china_tz)
         pubdate_name = pubdate.strftime("%Y-%m-%d_%H-%M-%S")
@@ -396,12 +399,18 @@ def transcriber(ctx: click.Context, mid: int, model: str):
         transcription_file = f"{root}/{mid}/{pubdate.year}/{pubdate.month:02d}/{recording_dir_name}/segments.json"
         if not os.path.exists(transcription_file):
             try:
-                download_and_transcribe(archive, transcription_file, model)
+                gpu_time = download_and_transcribe(archive, transcription_file, model)
+                total_gpu_time += gpu_time
+                total_archive_duration += archive.duration
             except Exception as e:
                 logger.error(f"下载和转写 {archive.bvid} 失败, 跳过: {e}")
                 continue
         else:
             logger.info(f"已存在 {recording_dir_name} 的转写结果, 跳过")
+
+    click.echo(f"总GPU时间: {total_gpu_time} 秒")
+    click.echo(f"总时长: {total_archive_duration} 秒")
+    click.echo(f"每秒GPU时间可以处理 {total_archive_duration / total_gpu_time} 秒录播时长")
 
 
 @vcut.command()
