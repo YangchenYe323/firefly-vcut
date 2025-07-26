@@ -10,6 +10,7 @@ dependencies = [
     "openai-whisper>=20250625",
     "psycopg2-binary>=2.9.10",
     "python-dotenv>=1.1.1",
+    "pytz>=2025.2",
     "rapidfuzz>=3.13.0",
     "requests>=2.32.4",
     "tqdm>=4.67.1",

@@ -4,6 +4,7 @@ from psycopg2.extras import execute_values
 from .types import Archive, VtuberSong, SongOccurrence
 from datetime import datetime
 import re
+import pytz
 
 
 @contextmanager
@@ -147,14 +148,16 @@ def insert_archives_to_db(
 ):
     def extract_datetime_from_title(title: str) -> datetime | None:
         """Extract datetime from Chinese title format"""
+        tz = pytz.timezone('Asia/Shanghai')
+
         pattern = r'(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})点场'
         match = re.search(pattern, title)
         
         if match:
             year, month, day, hour = map(int, match.groups())
-            return datetime(year, month, day, hour, 0, 0)
+            return tz.localize(datetime(year, month, day, hour, 0, 0))
         return None
-    
+
     mid = str(mid)
 
     with conn.cursor() as cursor:
