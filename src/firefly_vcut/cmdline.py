@@ -410,7 +410,8 @@ def transcriber(ctx: click.Context, mid: int, model: str):
 
     click.echo(f"总GPU时间: {total_gpu_time} 秒")
     click.echo(f"总时长: {total_archive_duration} 秒")
-    click.echo(f"每秒GPU时间可以处理 {total_archive_duration / total_gpu_time} 秒录播时长")
+    if total_gpu_time > 0:
+        click.echo(f"每秒GPU时间可以处理 {total_archive_duration / total_gpu_time} 秒录播时长")
 
 
 @vcut.command()
