@@ -47,4 +47,3 @@ def getWbiKeys(sessdata: str) -> tuple[str, str]:
     img_key = img_url.rsplit('/', 1)[1].split('.')[0]
     sub_key = sub_url.rsplit('/', 1)[1].split('.')[0]
     return img_key, sub_key
-

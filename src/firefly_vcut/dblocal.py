@@ -221,3 +221,30 @@ def insert_song_occurrences_to_db(
                 ],
             )
             conn.commit()
+
+def update_recording_transcript_and_mark_scanned(conn: psycopg2.extensions.connection, updates: list[dict]) -> int:
+    """
+    Update a recording's transcript, and mark it as scanned.
+
+    Args:
+        updates: A list of dictionaries, each containing the following keys:
+            - bvid: The Bilibili video ID.
+            - transcript_object_key: The object key of the transcript in the object store.
+    """
+    with conn.cursor() as cursor:
+        execute_values(
+            cursor,
+            """
+            UPDATE "LiveRecordingArchive" l
+            SET "transcriptObjectKey" = data."transcriptObjectKey",
+                "lastSongOccurrenceScan" = NOW()
+            FROM (VALUES %s) AS data ("bvid", "transcriptObjectKey")
+            WHERE l."bvid" = data."bvid";
+            """,
+            [
+                (update["bvid"], update["transcript_object_key"])
+                for update in updates
+            ],
+        )
+        conn.commit()
+        return cursor.rowcount

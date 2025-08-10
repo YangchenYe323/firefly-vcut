@@ -3,13 +3,16 @@ import json
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import logging
+import pytz
 import whisper
 import tqdm
+import boto3
+import botocore
 import click
 import sys
 
 from .fuzz import search_text_in_transcript
-from .dbold import (
+from .dblocal import (
     get_all_archives_from_db,
     get_all_occurrences_from_db,
     get_all_vtuber_songs_from_db,
@@ -19,8 +22,9 @@ from .dbold import (
     get_vtuber_song_by_title,
     insert_archives_to_db,
     insert_song_occurrences_to_db,
+    update_recording_transcript_and_mark_scanned,
 )
-from .bilibili import get_live_recording_series, get_archives_from_series
+from .bilibililocal import get_live_recording_series, get_archives_from_series
 from .types import Archive, SongOccurrence
 from .transcribe import download_and_transcribe
 
@@ -53,6 +57,62 @@ def vcut(ctx: click.Context, root: str, verbose: int):
         case _:
             logging.basicConfig(level=logging.DEBUG)
 
+@vcut.command()
+@click.pass_context
+def upload_transcripts_to_r2(ctx: click.Context):
+    """
+    Upload all the locally stored transcripts to r2, and mark all the recordings as scanned.
+    """
+    root = ctx.obj["root"]
+
+    r2 = boto3.client(
+        service_name="s3",
+        endpoint_url=os.getenv("R2_ENDPOINT"),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    )
+
+    updates = []
+    for mid in os.listdir(root):
+        for year in os.listdir(f"{root}/{mid}"):
+            for month in os.listdir(f"{root}/{mid}/{year}"):
+                for recording_dir_name in os.listdir(f"{root}/{mid}/{year}/{month}"):
+                    meta_file = f"{root}/{mid}/{year}/{month}/{recording_dir_name}/meta.json"
+                    transcript_file = f"{root}/{mid}/{year}/{month}/{recording_dir_name}/segments.json"
+
+                    if not os.path.exists(meta_file) or not os.path.exists(transcript_file):
+                        continue
+                    
+                    with open(meta_file, "r") as f:
+                        meta = json.load(f)
+                    
+                    tkey = transcript_key(mid, meta)
+
+                    try:
+                        r2.head_object(
+                            Bucket=os.getenv("R2_BUCKET"),
+                            Key=tkey,
+                        )
+                    except botocore.exceptions.ClientError as e:
+                        if e.response["Error"]["Code"] == "404":
+                            r2.upload_file(
+                                transcript_file,
+                                os.getenv("R2_BUCKET"),
+                                tkey,
+                            )
+                            print(f"Uploaded {tkey} to r2")
+                        else:
+                            raise e
+                    else:
+                        print(f"Object {tkey} already exists in r2, skipping")
+
+                    updates.append({
+                        "bvid": meta["bvid"],
+                        "transcript_object_key": tkey,
+                    })
+
+    with get_db_connection(os.getenv("DATABASE_URL")) as conn:
+        update_recording_transcript_and_mark_scanned(conn, updates)
 
 @vcut.command()
 @click.option(
@@ -506,3 +566,26 @@ def normalize_seconds(seconds):
 
     # Format with leading zeros
     return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}"
+
+def transcript_key(mid: int, recording: dict) -> str:
+    """
+    Generate a transcript object key from a recording.
+
+    Args:
+        mid: Mid of the user
+        recording: Recording metadata, which matches the meta.json file in the data directory populated by
+        the transcriber command.
+
+    Returns:
+        str: Transcript object key
+    """
+
+    bvid = recording["bvid"]
+    pubdate = recording["pubdate"]
+    # Extract year, month, day from pudate in tz Asia/Shanghai
+    pubdate = datetime.fromtimestamp(pubdate, tz=pytz.timezone("Asia/Shanghai"))
+    year = pubdate.year
+    month = pubdate.month
+    day = pubdate.day
+
+    return f"transcripts/{mid}/{year}/{month:02d}/{day:02d}/{bvid}.json"
