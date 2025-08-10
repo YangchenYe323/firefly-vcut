@@ -87,12 +87,14 @@ def get_archives_from_series(
 
         if response["code"] != 0:
             raise ValueError(f"Failed to get archives from series: {response}")
-        
+
         for archive in response["data"]["archives"]:
-            if pubdate_after is not None and archive["pubdate"] <= pubdate_after:
+            older_than_latest = pubdate_after is not None and archive["pubdate"] <= pubdate_after
+            newer_than_oldest = pubdate_before is not None and archive["pubdate"] >= pubdate_before
+
+            if older_than_latest and newer_than_oldest:
                 continue
-            if pubdate_before is not None and archive["pubdate"] >= pubdate_before:
-                continue
+
             archives.append(archive)
             if len(archives) >= limit:
                 break
