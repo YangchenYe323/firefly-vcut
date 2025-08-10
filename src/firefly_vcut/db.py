@@ -15,7 +15,6 @@ def get_db_connection(db_url: str):
     finally:
         conn.close()
 
-
 def get_all_archives_from_db(conn: psycopg2.extensions.connection, mid: int) -> list[Archive]:
     mid = str(mid)
 
