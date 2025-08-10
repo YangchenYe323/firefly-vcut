@@ -13,7 +13,6 @@ dependencies = [
     "modal>=1.1.1",
     "openai-whisper>=20250625",
     "polars>=1.31.0",
-    "prisma>=0.15.0",
     "psycopg2-binary>=2.9.10",
     "psycopg[binary]>=3.2.9",
     "pysubs2>=1.8.0",
