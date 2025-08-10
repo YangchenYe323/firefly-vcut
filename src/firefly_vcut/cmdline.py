@@ -9,7 +9,7 @@ import click
 import sys
 
 from .fuzz import search_text_in_transcript
-from .db import (
+from .dbold import (
     get_all_archives_from_db,
     get_all_occurrences_from_db,
     get_all_vtuber_songs_from_db,
