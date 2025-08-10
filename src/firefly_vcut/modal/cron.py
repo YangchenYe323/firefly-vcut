@@ -12,9 +12,10 @@ from .occurrence import populate_occurrences
     schedule=modal.Cron(timezone="Asia/Shanghai", cron_string="0 19 * * *") # 7:00PM Asia/Shanghai everyday.
 )
 def main():
-    new_recordings = discover_new_recordings.remote()
-    if new_recordings == 0:
-        return
+    # Note: we should probably divide this into multiple crons that run at their own cadence.
+    # The recording discovery should match the cadence of when and how often the vtuber streams and when
+    # the bilibili publishes the recording series, but others are not bound by this.
+    discover_new_recordings.remote()
     stream_recordings.remote()
     transcribe_recordings.remote()
     populate_occurrences.remote()

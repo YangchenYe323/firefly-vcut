@@ -95,7 +95,7 @@ def transcribe_recordings():
                         data = f.read()
 
                     page_segments = modal.transcribe.remote(data, "mp4")
-                    segments.extend(page_segments)
+                    segments.append(page_segments)
 
                 # Write the transcript to cache first.
                 print("🔄 Writing transcript to cache …")
