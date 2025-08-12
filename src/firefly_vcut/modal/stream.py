@@ -157,11 +157,12 @@ async def stream_recording(
             chunk: tuple[int, int],
             thread_pool_executor: ThreadPoolExecutor,
         ) -> dict:
+            range_header = f"bytes={chunk[0]}-{chunk[1]}" if chunk[1] != -1 else f"bytes={chunk[0]}-"
             header = {
                 "Cookie": f"SESSDATA={sessdata}",
                 "Referer": "https://www.bilibili.com/",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Range": f"bytes={chunk[0]}-{chunk[1]}",
+                "Range": range_header,
             }
 
             async with aiohttp.ClientSession() as session:
@@ -248,7 +249,10 @@ def chunk_audio(
     """
     chunks = []
     for i in range(0, content_length, chunk_size + 1):
-        chunks.append((i, min(i + chunk_size, content_length)))
+        if i + chunk_size >= content_length:
+            chunks.append((i, -1))
+        else:
+            chunks.append((i, i + chunk_size))
     return chunks
 
 
