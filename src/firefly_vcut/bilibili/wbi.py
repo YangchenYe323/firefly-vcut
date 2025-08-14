@@ -3,7 +3,8 @@ from hashlib import md5
 import urllib.parse
 import time
 import requests
-from ..retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
+from ..config import BILIBILI_RETRY_CONFIG
+from ..retry import retry_with_backoff
 
 mixinKeyEncTab = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,

@@ -10,7 +10,8 @@ import requests
 import firefly_vcut.db as db
 import boto3
 from firefly_vcut import bilibili
-from firefly_vcut.retry import retry_with_backoff, retry_with_backoff_async, STREAMING_RETRY_CONFIG
+from firefly_vcut.retry import retry_with_backoff, retry_with_backoff_async
+from firefly_vcut.config import STREAMING_RETRY_CONFIG
 
 from .app import app, secret
 
@@ -162,13 +163,19 @@ async def stream_recording(
             chunk: tuple[int, int],
             thread_pool_executor: ThreadPoolExecutor,
         ) -> dict:
-            range_header = f"bytes={chunk[0]}-{chunk[1]}" if chunk[1] != -1 else f"bytes={chunk[0]}-"
+            range_header = (
+                f"bytes={chunk[0]}-{chunk[1]}"
+                if chunk[1] != -1
+                else f"bytes={chunk[0]}-"
+            )
             header = {
                 "Cookie": f"SESSDATA={sessdata}",
                 "Referer": "https://www.bilibili.com/",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
                 "Range": range_header,
             }
+
+            print(f"Reading chunk {chunk}...")
 
             async def _make_async_request():
                 async with aiohttp.ClientSession() as session:
@@ -178,15 +185,14 @@ async def stream_recording(
                             raise Exception(
                                 f"Failed to get audio chunk: {resp.status}, {body}"
                             )
-                        return resp
+                        # Note: let's see how it works just buffering the whole thing in memory so I don't have
+                        # to deal with the fancy streaming and buffering to save some memory. One page is typically
+                        # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
+                        return await resp.read()
 
-            resp = await retry_with_backoff_async(_make_async_request, STREAMING_RETRY_CONFIG)
-
-            # Note: let's see how it works just buffering the whole thing in memory so I don't have
-            # to deal with the fancy streaming and buffering to save some memory. One page is typically
-            # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
-            print(f"Reading chunk {chunk}...")
-            chunk_data = await resp.read()
+            chunk_data = await retry_with_backoff_async(
+                _make_async_request, STREAMING_RETRY_CONFIG
+            )
 
             print(f"Uploading chunk {chunk}...")
             loop = asyncio.get_event_loop()

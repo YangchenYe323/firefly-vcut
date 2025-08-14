@@ -1,6 +1,7 @@
 import requests
 from . import wbi
-from ..retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
+from ..retry import retry_with_backoff
+from ..config import BILIBILI_RETRY_CONFIG
 
 def get_video_info(bvid: str, sessdata: str) -> dict:
     """

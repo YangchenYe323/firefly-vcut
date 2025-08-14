@@ -1,5 +1,6 @@
 import requests
-from ..retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
+from ..retry import retry_with_backoff
+from ..config import BILIBILI_RETRY_CONFIG
 
 def get_live_recording_series(mid: int) -> dict | None:
     """
