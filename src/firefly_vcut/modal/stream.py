@@ -10,6 +10,7 @@ import requests
 import firefly_vcut.db as db
 import boto3
 from firefly_vcut import bilibili
+from firefly_vcut.retry import retry_with_backoff, retry_with_backoff_async, STREAMING_RETRY_CONFIG
 
 from .app import app, secret
 
@@ -124,14 +125,18 @@ async def stream_recording(
         audio_url = selected_audio["baseUrl"]
 
         # Get the content length of the audio by sending a HEAD request
-        audio_resp = requests.head(
-            audio_url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Cookie": f"SESSDATA={sessdata}",
-                "Referer": "https://www.bilibili.com/",
-            },
-        )
+        def _make_head_request():
+            audio_resp = requests.head(
+                audio_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "Cookie": f"SESSDATA={sessdata}",
+                    "Referer": "https://www.bilibili.com/",
+                },
+            )
+            return audio_resp
+
+        audio_resp = retry_with_backoff(_make_head_request, STREAMING_RETRY_CONFIG)
 
         if audio_resp.status_code != 200:
             raise Exception(
@@ -165,36 +170,40 @@ async def stream_recording(
                 "Range": range_header,
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(audio_url, headers=header) as resp:
-                    if not resp.ok:
-                        body = await resp.text()
-                        raise Exception(
-                            f"Failed to get audio chunk: {resp.status}, {body}"
-                        )
+            async def _make_async_request():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(audio_url, headers=header) as resp:
+                        if not resp.ok:
+                            body = await resp.text()
+                            raise Exception(
+                                f"Failed to get audio chunk: {resp.status}, {body}"
+                            )
+                        return resp
 
-                    # Note: let's see how it works just buffering the whole thing in memory so I don't have
-                    # to deal with the fancy streaming and buffering to save some memory. One page is typically
-                    # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
-                    print(f"Reading chunk {chunk}...")
-                    chunk_data = await resp.read()
+            resp = await retry_with_backoff_async(_make_async_request, STREAMING_RETRY_CONFIG)
 
-                    print(f"Uploading chunk {chunk}...")
-                    loop = asyncio.get_event_loop()
-                    upload_response = await loop.run_in_executor(
-                        thread_pool_executor,
-                        lambda: r2.upload_part(
-                            Bucket=bucket,
-                            Key=audio_object_key,
-                            PartNumber=part_number,
-                            UploadId=upload_id,
-                            Body=chunk_data,
-                            ContentLength=len(chunk_data),
-                        ),
-                    )
+            # Note: let's see how it works just buffering the whole thing in memory so I don't have
+            # to deal with the fancy streaming and buffering to save some memory. One page is typically
+            # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
+            print(f"Reading chunk {chunk}...")
+            chunk_data = await resp.read()
 
-                    print(f"Uploaded chunk {chunk}...")
-                    return {"ETag": upload_response["ETag"], "PartNumber": part_number}
+            print(f"Uploading chunk {chunk}...")
+            loop = asyncio.get_event_loop()
+            upload_response = await loop.run_in_executor(
+                thread_pool_executor,
+                lambda: r2.upload_part(
+                    Bucket=bucket,
+                    Key=audio_object_key,
+                    PartNumber=part_number,
+                    UploadId=upload_id,
+                    Body=chunk_data,
+                    ContentLength=len(chunk_data),
+                ),
+            )
+
+            print(f"Uploaded chunk {chunk}...")
+            return {"ETag": upload_response["ETag"], "PartNumber": part_number}
 
         try:
             with ThreadPoolExecutor(max_workers=5) as thread_pool_executor:

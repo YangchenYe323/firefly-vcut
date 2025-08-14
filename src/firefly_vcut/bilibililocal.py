@@ -1,5 +1,6 @@
 import logging
 import requests
+from .retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
 
 from .types import Archive, Series
 
@@ -18,14 +19,17 @@ def get_live_recording_series(mid: int) -> Series | None:
     """
     URL = "https://api.bilibili.com/x/polymer/web-space/home/seasons_series"
 
-    response = requests.get(
-        URL,
-        params={"mid": mid, "page_num": 1000, "page_size": 10},
-        headers={
-            "User-Agent": "Mozilla/5.0 BiliDroid/6.73.1 (bbcallen@gmail.com) os/android model/Mi 10 Pro mobi_app/android build/6731100 channel/xiaomi innerVer/6731110 osVer/12 network/2"
-        },
-    )
+    def _make_request():
+        response = requests.get(
+            URL,
+            params={"mid": mid, "page_num": 1000, "page_size": 10},
+            headers={
+                "User-Agent": "Mozilla/5.0 BiliDroid/6.73.1 (bbcallen@gmail.com) os/android model/Mi 10 Pro mobi_app/android build/6731100 channel/xiaomi innerVer/6731110 osVer/12 network/2"
+            },
+        )
+        return response
 
+    response = retry_with_backoff(_make_request, BILIBILI_RETRY_CONFIG)
     response.raise_for_status()
 
     series_list = response.json()["data"]["items_lists"]["series_list"]
@@ -66,13 +70,18 @@ def get_archives_from_series(
             "pn": pn,
             "ps": page_size,
         }
-        response = requests.get(
-            URL,
-            params=params,
-            headers={
-                "User-Agent": "Mozilla/5.0 BiliDroid/6.73.1 (bbcallen@gmail.com) os/android model/Mi 10 Pro mobi_app/android build/6731100 channel/xiaomi innerVer/6731110 osVer/12 network/2",
-            },
-        )
+        
+        def _make_request():
+            response = requests.get(
+                URL,
+                params=params,
+                headers={
+                    "User-Agent": "Mozilla/5.0 BiliDroid/6.73.1 (bbcallen@gmail.com) os/android model/Mi 10 Pro mobi_app/android build/6731100 channel/xiaomi innerVer/6731110 osVer/12 network/2",
+                },
+            )
+            return response
+            
+        response = retry_with_backoff(_make_request, BILIBILI_RETRY_CONFIG)
         response.raise_for_status()
         response = response.json()
 

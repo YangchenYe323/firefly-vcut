@@ -1,5 +1,6 @@
 import requests
 from . import wbi
+from ..retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
 
 def get_video_info(bvid: str, sessdata: str) -> dict:
     """
@@ -9,16 +10,20 @@ def get_video_info(bvid: str, sessdata: str) -> dict:
         bvid: The Bilibili video ID.
     """
 
-    resp = requests.get(
-        "https://api.bilibili.com/x/web-interface/view",
-        params={
-            "bvid": bvid,
-        },
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-            "Cookie": f"SESSDATA={sessdata}",
-        },
-    )
+    def _make_request():
+        resp = requests.get(
+            "https://api.bilibili.com/x/web-interface/view",
+            params={
+                "bvid": bvid,
+            },
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Cookie": f"SESSDATA={sessdata}",
+            },
+        )
+        return resp
+
+    resp = retry_with_backoff(_make_request, BILIBILI_RETRY_CONFIG)
 
     if resp.status_code != 200:
         body = resp.text
@@ -49,14 +54,18 @@ def get_video_stream_url(bvid: str, cid: int, fnval: int, sessdata: str, wbi_key
     img_key, sub_key = wbi_key
     encoded_params = wbi.encWbi(params=params, img_key=img_key, sub_key=sub_key)
 
-    resp = requests.get(
-        base_url,
-        params=encoded_params,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-            "Cookie": f"SESSDATA={sessdata}",
-        },
-    )
+    def _make_request():
+        resp = requests.get(
+            base_url,
+            params=encoded_params,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Cookie": f"SESSDATA={sessdata}",
+            },
+        )
+        return resp
+
+    resp = retry_with_backoff(_make_request, BILIBILI_RETRY_CONFIG)
 
     if resp.status_code != 200:
         body = resp.text

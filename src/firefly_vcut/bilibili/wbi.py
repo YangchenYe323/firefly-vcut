@@ -3,6 +3,7 @@ from hashlib import md5
 import urllib.parse
 import time
 import requests
+from ..retry import retry_with_backoff, BILIBILI_RETRY_CONFIG
 
 mixinKeyEncTab = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
@@ -39,7 +40,12 @@ def getWbiKeys(sessdata: str) -> tuple[str, str]:
         'Referer': 'https://www.bilibili.com/',
         'Cookie': f'SESSDATA={sessdata}',
     }
-    resp = requests.get('https://api.bilibili.com/x/web-interface/nav', headers=headers)
+    
+    def _make_request():
+        resp = requests.get('https://api.bilibili.com/x/web-interface/nav', headers=headers)
+        return resp
+    
+    resp = retry_with_backoff(_make_request, BILIBILI_RETRY_CONFIG)
     resp.raise_for_status()
     json_content = resp.json()
     img_url: str = json_content['data']['wbi_img']['img_url']
