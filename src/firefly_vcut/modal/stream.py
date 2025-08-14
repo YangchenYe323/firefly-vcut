@@ -41,27 +41,31 @@ async def stream_recordings():
     for recording in recordings:
         print(f"Streaming recording {recording['title']} ({recording['bvid']})...")
 
-        object_keys = await stream_recording(
-            recording,
-            sessdata,
-            wbi_key,
-            r2,
-            os.getenv("R2_BUCKET"),
-        )
-
-        print(
-            f"Streamed audio from recording {recording['title']} to {object_keys} in bucket {os.getenv('R2_BUCKET')}"
-        )
-
-        # Update the recording with the object keys
-        with db.connection(os.getenv("DATABASE_URL")) as conn:
-            db.recording.update_recording_audio_object_keys(
-                conn, recording["id"], object_keys
+        try:
+            object_keys = await stream_recording(
+                recording,
+                sessdata,
+                wbi_key,
+                r2,
+                os.getenv("R2_BUCKET"),
             )
 
-        print(
-            f"Updated recording {recording['title']} with object keys {object_keys} in database"
-        )
+            print(
+                f"Streamed audio from recording {recording['title']} to {object_keys} in bucket {os.getenv('R2_BUCKET')}"
+            )
+
+            # Update the recording with the object keys
+            with db.connection(os.getenv("DATABASE_URL")) as conn:
+                db.recording.update_recording_audio_object_keys(
+                    conn, recording["id"], object_keys
+                )
+
+                print(
+                    f"Updated recording {recording['title']} with object keys {object_keys} in database"
+                )
+        except Exception as e:
+            print(f"Failed to stream recording {recording['title']}: {e}")
+            continue
 
 
 async def stream_recording(
