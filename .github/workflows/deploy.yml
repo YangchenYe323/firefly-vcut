@@ -26,10 +26,7 @@ jobs:
         run: |
           uv sync
       
-      - name: Enter virtual environment
-        run: |
-          source .venv/bin/activate
-
       - name: Deploy job
         run: |
+          source .venv/bin/activate
           modal deploy -m firefly_vcut.modal.cron --name firefly-vcut-cron
