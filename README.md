@@ -1,39 +1,22 @@
 # firefly-vcut
 
-Transcribe vtuber live recordings & Tools I use to manage the data pipeline for firefly : )
+A collection of serverless functions, and crons for populating song occurrence data used by [firefly](https://github.com/YangchenYe323/firefly). Use it to construct vtuber calendars and know which songs are played at which point in each live.
 
-## Dependencies
+## Deployment
 
-In addition to uv-managed python dependencies, this project needs access to the below binaries in PATH:
-
-- [BBDown](https://github.com/nilaoda/BBDown)
-- [ffmpeg](https://ffmpeg.org/)
-
-## Build from source
+The functions are hosted on [modal](https://modal.com/). Set the following environment varaibles in `.env` file under project root:
 
 ```
-git clone https://github.com/YangchenYe323/firefly-vcut
-cd firefly-vcut
-uv pip install .
+DATABASE_URL=<firefly postrges URL>
+R2_ENDPOINT=<cloudflare r2 endpoint>
+R2_BUCKET=<cloudflare r2 bucket name for hosting live transcript and audio archive>
+AWS_ACCESS_KEY_ID=<cloudflare r2 access key ID>
+AWS_SECRET_ACCESS_KEY=<cloudflare r2 secret access key>
+BILI_CRED_SESSDATA=<bilibili login credential for video streaming and other API calls>
 ```
 
-## Usage
-
-The entry point is the `vcut` script:
-
+Then run
+```Bash
+# Deploy the firefly cron to modal
+modal deploy -m firefly_vcut.modal.cron --name firefly-vcut-cron
 ```
-(firefly-vcut) mark@DESKTOP-KUNOCMR:~/git/YangchenYe323/firefly-vcut$ vcut --help
-Usage: vcut [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --root PATH    Root directory for vcut operations
-  -v, --verbose
-  --help         Show this message and exit.
-
-Commands:
-  search            Fuzzy search for the given lyric in the transcript.
-  sync-archive      Syncs locally stored live recording archives with the...
-  sync-occurrences  Syncs song occurrence in live recordings with the...
-  transcriber       Download and transcribe **ALL** live recordings of a...
-```
-
