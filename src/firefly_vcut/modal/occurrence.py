@@ -46,7 +46,11 @@ def backfill_occurrences(song_title: str, backfill_limit: int = 10):
             )
             print(f"Matched text: {text}")
 
-            for vtuber_song_id in song["vtuber_song_ids"]:
+            for i, vtuber_song_id in enumerate(song["vtuber_song_ids"]):
+                vtuber_profile_id = song["vtuber_profile_ids"][i]
+                if vtuber_profile_id != recording["vtuber_profile_id"]:
+                    continue
+
                 occurrences.append(
                     {
                         "song_id": song["id"],
@@ -106,7 +110,11 @@ def populate_occurrences():
             )
             print(f"Matched text: {text}")
 
-            for vtuber_song_id in song["vtuber_song_ids"]:
+            for i, vtuber_song_id in enumerate(song["vtuber_song_ids"]):
+                vtuber_profile_id = song["vtuber_profile_ids"][i]
+                if vtuber_profile_id != recording["vtuber_profile_id"]:
+                    continue
+
                 occurrences.append(
                     {
                         "song_id": song["id"],

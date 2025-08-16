@@ -192,6 +192,7 @@ def list_recordings_to_populate_occurrences(conn: psycopg.Connection) -> list[di
         Each recording is a dictionary with the following keys:
         - id: The recording ID.
         - bvid: The Bilibili video ID.
+        - vtuber_profile_id: The vtuber profile ID.
         - transcriptObjectKey: The object key of the transcript in the object store.
     """
     with conn.cursor(row_factory=dict_row) as cursor:
@@ -199,6 +200,7 @@ def list_recordings_to_populate_occurrences(conn: psycopg.Connection) -> list[di
             SELECT 
                 l."id" as "id",
                 l."bvid" as "bvid",
+                l."vtuberProfileId" as "vtuber_profile_id",
                 l."transcriptObjectKey" as "transcriptObjectKey"
             FROM "LiveRecordingArchive" l
             WHERE l."lastSongOccurrenceScan" IS NULL
@@ -219,6 +221,7 @@ def list_latest_recordings(conn: psycopg.Connection, limit: int) -> list[dict]:
         Each recording is a dictionary with the following keys:
         - id: The recording ID.
         - bvid: The Bilibili video ID.
+        - vtuber_profile_id: The vtuber profile ID.
         - transcriptObjectKey: The object key of the transcript in the object store.
     """
     with conn.cursor(row_factory=dict_row) as cursor:
@@ -226,6 +229,7 @@ def list_latest_recordings(conn: psycopg.Connection, limit: int) -> list[dict]:
             SELECT
                 l."id" as "id",
                 l."bvid" as "bvid",
+                l."vtuberProfileId" as "vtuber_profile_id",
                 l."transcriptObjectKey" as "transcriptObjectKey"
             FROM "LiveRecordingArchive" l
             WHERE l."transcriptObjectKey" IS NOT NULL
