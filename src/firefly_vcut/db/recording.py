@@ -206,6 +206,33 @@ def list_recordings_to_populate_occurrences(conn: psycopg.Connection) -> list[di
         """)
         return cursor.fetchall()
 
+def list_latest_recordings(conn: psycopg.Connection, limit: int) -> list[dict]:
+    """
+    List the latest recordings.
+
+    Args:
+        conn: A database connection.
+        limit: The maximum number of recordings to return.
+
+    Returns:
+        A list of recordings.
+        Each recording is a dictionary with the following keys:
+        - id: The recording ID.
+        - bvid: The Bilibili video ID.
+        - transcriptObjectKey: The object key of the transcript in the object store.
+    """
+    with conn.cursor(row_factory=dict_row) as cursor:
+        cursor.execute("""
+            SELECT
+                l."id" as "id",
+                l."bvid" as "bvid",
+                l."transcriptObjectKey" as "transcriptObjectKey"
+            FROM "LiveRecordingArchive" l
+            WHERE l."transcriptObjectKey" IS NOT NULL
+            ORDER BY l."pubdate" DESC LIMIT %s;
+        """, (limit,))
+        return cursor.fetchall()
+
 def update_recording_audio_object_keys(conn: psycopg.Connection, recording_id: int, audio_object_keys: list[str]) -> int:
     """
     Update a recording's audio object keys.
