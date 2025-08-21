@@ -23,7 +23,7 @@ from .app import app, secret
 async def stream_recordings():
     # Fetch a recordings to stream audio for
     with db.connection(os.getenv("DATABASE_URL")) as conn:
-        recordings = db.recording.list_recordings_to_stream(conn, limit=1)
+        recordings = db.recording.list_recordings_to_stream(conn, limit=10)
         if not recordings:
             print("No recordings to stream")
             return

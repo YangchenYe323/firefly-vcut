@@ -30,7 +30,7 @@ image = (
     )
 )
 
-secret = modal.Secret.from_dotenv()
+secret = modal.Secret.from_name("firefly-secret")
 
 app = modal.App("firefly-vcut-app", image=image)
 
