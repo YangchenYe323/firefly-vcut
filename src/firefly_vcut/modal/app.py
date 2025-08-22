@@ -37,8 +37,8 @@ app = modal.App("firefly-vcut-app", image=image)
 cache_volume = modal.Volume.from_name("firefly-vcut-cache", create_if_missing=True)
 
 bucket_volume = modal.CloudBucketMount(
-    bucket_name=secret.info["R2_BUCKET"],
-    bucket_endpoint_url=secret.info["R2_ENDPOINT"],
+    bucket_name=secret.info()["R2_BUCKET"],
+    bucket_endpoint_url=secret.info()["R2_ENDPOINT"],
     secret=secret,
     read_only=False,
 )
