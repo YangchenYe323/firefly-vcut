@@ -27,6 +27,9 @@ jobs:
           uv sync
       
       - name: Deploy job
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           source .venv/bin/activate
           modal deploy -m firefly_vcut.modal.cron --name firefly-vcut-cron
