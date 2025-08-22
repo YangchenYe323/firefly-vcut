@@ -39,8 +39,8 @@ cache_volume = modal.Volume.from_name("firefly-vcut-cache", create_if_missing=Tr
 # TODO: how to retreive the bucket name and endpoint from environment variables?
 # I wanted to use dotenv but not package it in the image.
 bucket_volume = modal.CloudBucketMount(
-    bucket_name=os.getenv("R2_BUCKET"),
-    bucket_endpoint_url=os.getenv("R2_ENDPOINT"),
+    bucket_name=secret.info["R2_BUCKET"],
+    bucket_endpoint_url=secret.info["R2_ENDPOINT"],
     secret=secret,
     read_only=False,
 )
