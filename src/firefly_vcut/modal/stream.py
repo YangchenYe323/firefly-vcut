@@ -2,6 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import os
+import time
 
 import aiohttp
 import botocore
@@ -151,101 +152,126 @@ async def stream_recording(
         content_length = int(audio_resp.headers["Content-Length"])
         print(f"Audio content length: {content_length}")
 
-        chunks = chunk_audio(content_length)
+        for chunk_size in (20 * 1024 * 1024, 50 * 1024 * 1024, None):
+            # Try different chunk sizes and fall back to single threaded upload
+            # as bilibili server goes to lunch sometime for no reason and
+            # closes the connection for a specific chunk.
+            # This manifests as <ContentLengthError: 400, message='Not enough data to satisfy content length header.'>
+            # when reading the chunk.
 
-        # Start multipart upload
-        multipart_upload = r2.create_multipart_upload(
-            Bucket=bucket, Key=audio_object_key, ContentType="audio/mp4"
-        )
-        upload_id = multipart_upload["UploadId"]
-        print(
-            f"Created multipart upload for {audio_object_key} with upload ID {upload_id}"
-        )
+            print(f"Chunking audio with chunk size {chunk_size}...")
+            chunks = chunk_audio(content_length, chunk_size)
 
-        async def upload_single_chunk(
-            part_number: int,
-            chunk: tuple[int, int],
-            thread_pool_executor: ThreadPoolExecutor,
-        ) -> dict:
-            range_header = (
-                f"bytes={chunk[0]}-{chunk[1]}"
-                if chunk[1] != -1
-                else f"bytes={chunk[0]}-"
-            )
-            header = {
-                "Cookie": f"SESSDATA={sessdata}",
-                "Referer": "https://www.bilibili.com/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Range": range_header,
-            }
+            try:
+                # Start multipart upload
+                multipart_upload = r2.create_multipart_upload(
+                    Bucket=bucket, Key=audio_object_key, ContentType="audio/mp4"
+                )
+                upload_id = multipart_upload["UploadId"]
+                print(
+                    f"Created multipart upload for {audio_object_key} with upload ID {upload_id}"
+                )
 
-            print(f"Reading chunk {chunk}...")
+                async def upload_single_chunk(
+                    part_number: int,
+                    chunk: tuple[int, int],
+                    thread_pool_executor: ThreadPoolExecutor,
+                ) -> dict:
+                    range_header = (
+                        f"bytes={chunk[0]}-{chunk[1]}"
+                        if chunk[1] != -1
+                        else f"bytes={chunk[0]}-"
+                    )
 
-            async def _make_async_request():
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(audio_url, headers=header) as resp:
-                        if not resp.ok:
-                            body = await resp.text()
-                            raise Exception(
-                                f"Failed to get audio chunk: {resp.status}, {body}"
-                            )
+                    header = {
+                        "Cookie": f"SESSDATA={sessdata}",
+                        "Referer": "https://www.bilibili.com/",
+                        "User-Agent": "Mozilla/5.0",
+                        "Range": range_header,
+                    }
 
-                        # Check if Content-Length matches what we expect
-                        content_length = resp.headers.get("Content-Length")
-                        expected_size = chunk[1] - chunk[0] + 1 if chunk[1] != -1 else None
+                    async def _make_async_request():
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(audio_url, headers=header) as resp:
+                                if not resp.ok:
+                                    raise Exception(
+                                        f"Failed to get audio chunk: {resp.status}, {await resp.text()}"
+                                    )
 
-                        if content_length and expected_size:
-                            if int(content_length) != expected_size:
-                                print(f"Warning: Content-Length mismatch. Expected: {expected_size}, Got: {content_length}")
-                                raise Exception(f"Content-Length mismatch. Expected: {expected_size}, Got: {content_length}")
-                        # Note: let's see how it works just buffering the whole thing in memory so I don't have
-                        # to deal with the fancy streaming and buffering to save some memory. One page is typically
-                        # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
-                        return await resp.read()
+                                # Check if Content-Length matches what we expect
+                                content_length = resp.headers.get("Content-Length")
+                                expected_size = (
+                                    chunk[1] - chunk[0] + 1 if chunk[1] != -1 else None
+                                )
 
-            chunk_data = await retry_with_backoff_async(
-                _make_async_request, STREAMING_RETRY_CONFIG
-            )
+                                if content_length and expected_size:
+                                    if int(content_length) != expected_size:
+                                        print(
+                                            f"Warning: Content-Length mismatch. Expected: {expected_size}, Got: {content_length}"
+                                        )
+                                        raise Exception(
+                                            f"Content-Length mismatch. Expected: {expected_size}, Got: {content_length}"
+                                        )
+                                print(f"Reading chunk {chunk}...")
+                                # Note: let's see how it works just buffering the whole thing in memory so I don't have
+                                # to deal with the fancy streaming and buffering to save some memory. One page is typically
+                                # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
+                                return await resp.read()
 
-            print(f"Uploading chunk {chunk}...")
-            loop = asyncio.get_event_loop()
-            upload_response = await loop.run_in_executor(
-                thread_pool_executor,
-                lambda: r2.upload_part(
+                    chunk_data = await retry_with_backoff_async(
+                        _make_async_request, STREAMING_RETRY_CONFIG
+                    )
+
+                    print(f"Uploading chunk {chunk}...")
+                    loop = asyncio.get_event_loop()
+                    upload_response = await loop.run_in_executor(
+                        thread_pool_executor,
+                        lambda: r2.upload_part(
+                            Bucket=bucket,
+                            Key=audio_object_key,
+                            PartNumber=part_number,
+                            UploadId=upload_id,
+                            Body=chunk_data,
+                            ContentLength=len(chunk_data),
+                        ),
+                    )
+
+                    print(f"Uploaded chunk {chunk}...")
+                    return {"ETag": upload_response["ETag"], "PartNumber": part_number}
+
+                with ThreadPoolExecutor(max_workers=5) as thread_pool_executor:
+                    tasks = [
+                        upload_single_chunk(i + 1, chunk, thread_pool_executor)
+                        for i, chunk in enumerate(chunks)
+                    ]
+                    results = await asyncio.gather(*tasks)
+                # Complete multipart upload
+                r2.complete_multipart_upload(
                     Bucket=bucket,
                     Key=audio_object_key,
-                    PartNumber=part_number,
                     UploadId=upload_id,
-                    Body=chunk_data,
-                    ContentLength=len(chunk_data),
-                ),
-            )
+                    MultipartUpload={
+                        "Parts": results,
+                    },
+                )
 
-            print(f"Uploaded chunk {chunk}...")
-            return {"ETag": upload_response["ETag"], "PartNumber": part_number}
+                print(
+                    f"Completed multipart upload for {audio_object_key} with upload ID {upload_id}"
+                )
+                break
+            except Exception as e:
+                print(
+                    f"Failed to complete multipart upload: {e}, try another chunk size..."
+                )
+                if tasks:
+                    for task in tasks:
+                        task.cancel()
 
-        try:
-            with ThreadPoolExecutor(max_workers=5) as thread_pool_executor:
-                tasks = [
-                    upload_single_chunk(i + 1, chunk, thread_pool_executor)
-                    for i, chunk in enumerate(chunks)
-                ]
-                results = await asyncio.gather(*tasks)
-            # Complete multipart upload
-            r2.complete_multipart_upload(
-                Bucket=bucket,
-                Key=audio_object_key,
-                UploadId=upload_id,
-                MultipartUpload={
-                    "Parts": results,
-                },
-            )
-        except Exception as e:
-            print(f"Failed to complete multipart upload: {e}")
-            r2.abort_multipart_upload(
-                Bucket=bucket, Key=audio_object_key, UploadId=upload_id
-            )
-            raise e
+                if upload_id:
+                    r2.abort_multipart_upload(
+                        Bucket=bucket, Key=audio_object_key, UploadId=upload_id
+                    )
+                time.sleep(10)
 
         object_keys.append(audio_object_key)
 
@@ -270,11 +296,15 @@ def object_exists(
 
 
 def chunk_audio(
-    content_length: int, chunk_size: int = 20 * 1024 * 1024
+    content_length: int, chunk_size: int | None = 20 * 1024 * 1024
 ) -> list[tuple[int, int]]:
     """
     Chunk the audio into chunks of the given size.
     """
+
+    if chunk_size is None:
+        return [(0, -1)]
+
     chunks = []
     for i in range(0, content_length, chunk_size + 1):
         if i + chunk_size >= content_length:

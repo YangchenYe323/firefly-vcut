@@ -24,8 +24,8 @@ BILIBILI_RETRY_CONFIG = RetryConfig(
 
 # Live streaming specific retry configuration
 STREAMING_RETRY_CONFIG = RetryConfig(
-    max_retries=int(os.getenv("STREAMING_MAX_RETRIES", "3")),
+    max_retries=int(os.getenv("STREAMING_MAX_RETRIES", "5")),
     initial_backoff=float(os.getenv("STREAMING_INITIAL_BACKOFF", "5.0")),
-    exponent=float(os.getenv("STREAMING_EXPONENT", "2.0")),
+    exponent=float(os.getenv("STREAMING_EXPONENT", "2.5")),
     max_backoff=float(os.getenv("STREAMING_MAX_BACKOFF", "60.0")) if os.getenv("STREAMING_MAX_BACKOFF") else None,
 ) 
