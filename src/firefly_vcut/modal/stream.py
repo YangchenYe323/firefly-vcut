@@ -189,6 +189,15 @@ async def stream_recording(
                             raise Exception(
                                 f"Failed to get audio chunk: {resp.status}, {body}"
                             )
+
+                        # Check if Content-Length matches what we expect
+                        content_length = resp.headers.get("Content-Length")
+                        expected_size = chunk[1] - chunk[0] + 1 if chunk[1] != -1 else None
+
+                        if content_length and expected_size:
+                            if int(content_length) != expected_size:
+                                print(f"Warning: Content-Length mismatch. Expected: {expected_size}, Got: {content_length}")
+                                raise Exception(f"Content-Length mismatch. Expected: {expected_size}, Got: {content_length}")
                         # Note: let's see how it works just buffering the whole thing in memory so I don't have
                         # to deal with the fancy streaming and buffering to save some memory. One page is typically
                         # 200-500MB, and the cost of that is pretty much negligible compared to GPU (my guess).
