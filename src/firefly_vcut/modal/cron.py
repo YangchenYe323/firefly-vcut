@@ -9,7 +9,7 @@ from .occurrence import populate_occurrences
 
 @app.function(
     timeout=60 * 60, # 60 minutes
-    schedule=modal.Cron(timezone="Asia/Shanghai", cron_string="0 19 * * *") # 7:00PM Asia/Shanghai everyday.
+    schedule=modal.Cron(timezone="Asia/Shanghai", cron_string="0 3 * * *") # 3:00AM Asia/Shanghai everyday.
 )
 def main():
     # Note: we should probably divide this into multiple crons that run at their own cadence.
