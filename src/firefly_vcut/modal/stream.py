@@ -18,7 +18,7 @@ from .app import app, secret
 
 
 @app.function(
-    timeout=30 * 60,  # 30 minutes
+    timeout=60 * 60,  # 60 minutes
     secrets=[secret],
 )
 async def stream_recordings():

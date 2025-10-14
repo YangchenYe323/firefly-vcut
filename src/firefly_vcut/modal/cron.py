@@ -8,7 +8,7 @@ from .occurrence import populate_occurrences
 
 
 @app.function(
-    timeout=60 * 60, # 60 minutes
+    timeout=120 * 60, # 120 minutes
     schedule=modal.Cron(timezone="Asia/Shanghai", cron_string="0 3 * * *") # 3:00AM Asia/Shanghai everyday.
 )
 def main():
