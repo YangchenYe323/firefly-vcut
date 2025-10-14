@@ -49,7 +49,7 @@ class Whisper:
 
 
 @app.function(
-    timeout=30 * 60,  # 30 minutes
+    timeout=100 * 60,  # 100 minutes
     secrets=[secret],
     volumes={
         BUCKET_DIR: bucket_volume,
