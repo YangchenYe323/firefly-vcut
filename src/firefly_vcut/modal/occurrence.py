@@ -3,7 +3,6 @@ import json
 
 from .app import app, bucket_volume, BUCKET_DIR, secret
 
-
 @app.function(
     timeout=30 * 60,  # 30 minutes
     secrets=[secret],
