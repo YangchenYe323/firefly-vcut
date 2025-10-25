@@ -33,3 +33,4 @@ jobs:
         run: |
           source .venv/bin/activate
           modal deploy -m firefly_vcut.modal.cron --name firefly-vcut-cron
+          modal deploy -m firefly_vcut.modal.video --name firefly-vcut-video
