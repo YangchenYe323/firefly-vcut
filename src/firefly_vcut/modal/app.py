@@ -27,6 +27,7 @@ image = (
         "botocore>=1.40.6",
         "aiohttp>=3.11.12",
         "rapidfuzz>=3.13.0",
+        "cbor2>=5.7.1" # for calling via libmodal
     )
 )
 

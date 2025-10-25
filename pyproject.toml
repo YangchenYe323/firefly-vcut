@@ -9,6 +9,7 @@ dependencies = [
     "asyncio>=4.0.0",
     "boto3>=1.40.6",
     "botocore>=1.40.6",
+    "cbor2>=5.7.1",
     "click>=8.2.1",
     "logging>=0.4.9.6",
     "matplotlib>=3.10.3",
