@@ -11,7 +11,7 @@ from .app import app, cache_volume, bucket_volume, CACHE_DIR, BUCKET_DIR, secret
 @app.cls(
     gpu="T4",
     image=image,
-    timeout=10 * 60,
+    timeout=30 * 60, # 30 minutes
     volumes={
         CACHE_DIR: cache_volume,
     },
