@@ -11,6 +11,7 @@ import firefly_vcut.bilibili as bilibili
 # Regex patterns to extract song title from video title
 SONG_VIDEO_PATTERNS = [
     r"《(.*)》"  # e.g., '「我来不及道声不安，有点混乱有点缓慢」痛彻心扉翻唱《离开我的依赖》'
+    r"『(.*)』" # e.g., '又想了一遍，在我忘记你之前”无与伦比翻唱版『轨迹』'
 ]
 
 
