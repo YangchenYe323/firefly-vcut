@@ -59,7 +59,7 @@ def create_recordings(conn: psycopg.Connection, recordings: list[dict], mid: int
                     recording["cover"],
                 )
                 for recording in recordings
-                if extract_datetime_from_title(recording["title"]) is not None, # Skip recordings that has no dates
+                if extract_datetime_from_title(recording["title"]) is not None # Skip recordings that has no dates
             ],
         )
         conn.commit()
