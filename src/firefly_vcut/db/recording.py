@@ -31,7 +31,7 @@ def create_recordings(conn: psycopg.Connection, recordings: list[dict], mid: int
             year, month, day, hour = map(int, match.groups())
             return tz.localize(datetime(year, month, day, hour, 0, 0))
         return None
-
+    
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -59,6 +59,7 @@ def create_recordings(conn: psycopg.Connection, recordings: list[dict], mid: int
                     recording["cover"],
                 )
                 for recording in recordings
+                if extract_datetime_from_title(recording["title"]) is not None, # Skip recordings that has no dates
             ],
         )
         conn.commit()
