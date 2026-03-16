@@ -10,8 +10,8 @@ import firefly_vcut.bilibili as bilibili
 
 # Regex patterns to extract song title from video title
 SONG_VIDEO_PATTERNS = [
-    r"《(.*)》"  # e.g., '「我来不及道声不安，有点混乱有点缓慢」痛彻心扉翻唱《离开我的依赖》'
-    r"『(.*)』" # e.g., '又想了一遍，在我忘记你之前”无与伦比翻唱版『轨迹』'
+    r"《(.*)》",  # e.g., '「我来不及道声不安，有点混乱有点缓慢」痛彻心扉翻唱《离开我的依赖》'
+    r"『(.*)』",  # e.g., '又想了一遍，在我忘记你之前”无与伦比翻唱版『轨迹』'
 ]
 
 
@@ -64,9 +64,12 @@ def discover_new_song_videos():
             pubdate_after=latest_video_pubdate,
         )
 
+        print(f"Found {len(videos)} new song videos for vtuber {mid}")
+
         for video in videos:
             title = extract_title_from_video_title(video["title"])
             if title is None:
+                print(f"Vtuber {mid} uploaded a video with title that are unlikely to be a song: {video['title']}")
                 continue
 
             if title not in by_title:
