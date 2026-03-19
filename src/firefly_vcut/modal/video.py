@@ -8,10 +8,13 @@ from .app import app, secret
 import firefly_vcut.db as db
 import firefly_vcut.bilibili as bilibili
 
-# Regex patterns to extract song title from video title
+# Regex patterns to extract song title from video title.
+# Note that the order matters, see the example of the third pattern : )
+# Adjust this to your vtuber;s naming convention.
 SONG_VIDEO_PATTERNS = [
     r"《(.*)》",  # e.g., '「我来不及道声不安，有点混乱有点缓慢」痛彻心扉翻唱《离开我的依赖》'
     r"『(.*)』",  # e.g., '又想了一遍，在我忘记你之前”无与伦比翻唱版『轨迹』'
+    r"「(.*)」",  # e.g., '温柔女声翻唱“付出大半，仅是不起眼的「小半」”'
 ]
 
 
