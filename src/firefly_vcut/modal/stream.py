@@ -95,7 +95,7 @@ async def stream_recording(
 
     # Get the video info
     info_response = bilibili.video.get_video_info(
-        recording["bvid"], os.getenv("BILIBILI_SESSDATA")
+        recording["bvid"], sessdata, wbi_key
     )
     if info_response["code"] != 0:
         raise Exception(f"Failed to get video info: {info_response['message']}")

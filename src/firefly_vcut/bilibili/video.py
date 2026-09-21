@@ -106,23 +106,38 @@ def list_user_videos(
     return videos
 
 
-def get_video_info(bvid: str, sessdata: str) -> dict:
+def get_video_info(bvid: str, sessdata: str, wbi_key: tuple[str, str]) -> dict:
     """
     Get video info from Bilibili.
 
     Args:
         bvid: The Bilibili video ID.
+        sessdata: The sessdata of the login user.
+        wbi_key: The wbi key of the login user.
     """
+    from . import buvid3 as buvid3_module
+
+    # Get buvid3 for additional anti-bot protection
+    buvid3 = buvid3_module.get_buvid3(sessdata)
+
+    params = {
+        "bvid": bvid,
+    }
+
+    img_key, sub_key = wbi_key
+    encoded_params = wbi.encWbi(params=params, img_key=img_key, sub_key=sub_key)
 
     def _make_request():
         resp = requests.get(
-            "https://api.bilibili.com/x/web-interface/view",
-            params={
-                "bvid": bvid,
-            },
+            "https://api.bilibili.com/x/web-interface/wbi/view",
+            params=encoded_params,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Cookie": f"SESSDATA={sessdata}",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Cookie": f"SESSDATA={sessdata}; buvid3={buvid3}",
+                "Referer": "https://www.bilibili.com/",
+                "Origin": "https://www.bilibili.com",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
             },
         )
         return resp
