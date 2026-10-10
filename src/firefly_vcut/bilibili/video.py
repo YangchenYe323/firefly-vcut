@@ -29,6 +29,10 @@ def list_user_videos(
         - title: The title of the video.
         - created: The publication date of the video, unix epoch timestamp.
     """
+    from . import buvid3 as buvid3_module
+
+    # Get buvid3 for additional anti-bot protection
+    buvid3 = buvid3_module.get_buvid3(sessdata)
 
     # See comments in https://github.com/SocialSisterYi/bilibili-API-collect/blob/e5fbfed42807605115c6a9b96447f6328ca263c5/docs/user/space.md
     # Don't bother with https://api.bilibili.com/x/space/wbi/arc/search
@@ -58,8 +62,12 @@ def list_user_videos(
                 base_url,
                 params=encoded_params,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                    "Cookie": f"SESSDATA={sessdata}",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "Cookie": f"SESSDATA={sessdata}; buvid3={buvid3}",
+                    "Referer": "https://www.bilibili.com/",
+                    "Origin": "https://www.bilibili.com",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
                 },
             )
             return resp
@@ -164,6 +172,10 @@ def get_video_stream_url(
         sessdata: The sessdata of the login user.
         wbi_key: The wbi key of the login user.
     """
+    from . import buvid3 as buvid3_module
+
+    # Get buvid3 for additional anti-bot protection
+    buvid3 = buvid3_module.get_buvid3(sessdata)
 
     base_url = "https://api.bilibili.com/x/player/wbi/playurl"
 
@@ -181,8 +193,12 @@ def get_video_stream_url(
             base_url,
             params=encoded_params,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Cookie": f"SESSDATA={sessdata}",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Cookie": f"SESSDATA={sessdata}; buvid3={buvid3}",
+                "Referer": "https://www.bilibili.com/",
+                "Origin": "https://www.bilibili.com",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
             },
         )
         return resp
